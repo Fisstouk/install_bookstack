@@ -2,7 +2,6 @@
 #
 #version:0.3
 #
-#auteur:lyronn
 
 #affiche les commandes realisees
 set -x
