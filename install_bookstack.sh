@@ -2,6 +2,7 @@
 #
 #version:0.3
 #
+#auteur:lyronn
 
 #affiche les commandes realisees
 set -x
@@ -75,16 +76,20 @@ function configure_mariadb()
 	#cree la bdd nomme bookstack
 	mysql -e "CREATE DATABASE bookstack;"
 
-	#creation de l'utilisateur nimda avec son mdp
-	mysql -e "CREATE USER 'nimda'@'localhost' IDENTIFIED BY 'aze!123';"
+	#creation de l'utilisateur nimda avec son mdp en tant qu'admin
+	mysql -e "CREATE USER 'nimda'@'localhost' IDENTIFIED BY 'aze\!123';"
+
+	#creation de l'utilisateur lyronn en tant que viewer
+	mysql -e "CREATE USER 'lyronn'@'localhost' IDENTIFIED BY 'aze\!123';"
+
+	#creation de l'utilisateur guest en tant qu'invite
+	mysql -e "CREATE USER 'guest'@'localhost' IDENTIFIED BY 'aze\!123';"
 
 	#donne les droits admin a nimda
-	mysql -e 'GRANT ALL ON bookstack.* TO "nimda"@"localhost"
-	IDENTIFIED BY "aze!123" WITH GRANT OPTION;'
+	mysql -e 'GRANT ALL ON bookstack.* TO "nimda"@"localhost" IDENTIFIED BY "aze\!123" WITH GRANT OPTION;'
 
 	#enregistre et quitte la bdd
 	mysql -e "FLUSH PRIVILEGES;"
-	mysql -e "EXIT;"
 }
 
 function configure_composer()
@@ -117,6 +122,27 @@ function configure_composer()
 	composer update -n
 }
 
+function bookstack_rights()
+{
+	groupadd bookstack
+	
+	chgrp -Rv bookstack /root/BookStack/storage
+
+	chgrp -Rv bookstack /root/BookStack/bootstrap/cache
+
+	chgrp -Rv bookstack /root/BookStack/public/uploads
+
+	usermod -aG bookstack www-data
+	usermod -aG bookstack root
+
+	chmod 770 /root/BookStack/storage
+
+	chmod 770 /root/BookStack/bootstrap/cache
+
+	chmod 770 /root/BookStack/public/uploads
+
+}
+
 function install_bookstack()
 {
 	#telechargement de bookstack
@@ -127,9 +153,39 @@ function install_bookstack()
 
 	cd /root/BookStack
 	composer install --no-dev -n	
+	cd /root/
 
+	#.env fichier de config pour BookStack
+	#copier le fichier .env.example entrer l'email et le nom de la bdd dans le fichier .env
+	cp /root/BookStack/.env.example /root/Bookstack/.env
+
+	#remplacement de la configuration de la bdd
+	sed -i "s/database_database/bookstack/" /root/BookStack/.env
+	sed -i "s/database_username/nimda/" /root/BookStack/.env
+	sed -i "s/database_user_password/aze\!123/" /root/BookStack/.env
+
+	#generer la cle d'application
+	cd /root/BookStack
+	yes | php artisan key:generate
+
+	#gestion d'erreur
+	if echo $?==0; then
+		echo "Cle d'application générée"
+	else
+		echo "Erreur: cle d'application non générée"
+		exit
+	fi
+
+	#configurer le fichier root de nginx dans /etc/nginx/sites-enabled/default
+	sed -i "s;/var/www/example.com;/root/BookStack/public/;" /etc/nginx/sites-enabled/default
+
+	#mise a jour de la base de donnee
+	yes | php artisan migrate
+	
 
 }
+
+clear
 
 echo "Mises à jour et installation de nginx"
 nginx_install
