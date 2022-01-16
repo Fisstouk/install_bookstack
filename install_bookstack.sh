@@ -1,8 +1,7 @@
 #!/bin/bash
 #
-#version:0.3
+#version:1.0
 #
-#auteur:lyronn
 
 #affiche les commandes realisees
 set -x
