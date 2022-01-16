@@ -12,6 +12,8 @@ set -e
 
 function nginx_install()
 {
+	#modifie temporairement le umask
+	umask 002
 	#mise a jour et installation de nginx et git
 	apt update -y
 	apt install nginx -y
@@ -42,11 +44,12 @@ function mariadb_install()
 function php_install()
 {
 	apt install php-fpm -y
+
+	#demarrer php
+	systemctl start php7.4-fpm.service
+	systemctl enable php7.4-fpm.service
+
 	#installation des extensions php suivantes
-	#OpenSSL
-
-	#PDO pour lier php et mysql
-
 	#MBstring
 	apt install php7.4-mbstring -y
 
@@ -62,9 +65,6 @@ function php_install()
 	#SimpleXML et DOM
 	apt install php-xml -y
 
-	#demarrer php
-	systemctl start php7.4-fpm.service
-	systemctl enable php7.4-fpm.service
 }
 
 function configure_mariadb()
@@ -94,6 +94,9 @@ function configure_mariadb()
 
 function configure_composer()
 {	
+	#installatin de unzip
+	apt install unzip -y
+
 	#installation de composer
 	php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
 
@@ -145,28 +148,35 @@ function bookstack_rights()
 
 function install_bookstack()
 {
+	cd /var/www/
+
 	#telechargement de bookstack
 	git clone https://github.com/BookStackApp/BookStack.git --branch release --single-branch
 
-	#installation de unzip pour installer BookStack
-	apt install unzip -y
+	mv /var/www/BookStack /var/www/bookstack
 
-	cd /root/BookStack
+	cd /var/www/bookstack/
+
 	composer install --no-dev -n	
-	cd /root/
 
 	#.env fichier de config pour BookStack
 	#copier le fichier .env.example entrer l'email et le nom de la bdd dans le fichier .env
-	cp /root/BookStack/.env.example /root/Bookstack/.env
+	cp /var/www/bookstack/.env.example /var/www/bookstack/.env
 
 	#remplacement de la configuration de la bdd
-	sed -i "s/database_database/bookstack/" /root/BookStack/.env
-	sed -i "s/database_username/nimda/" /root/BookStack/.env
-	sed -i "s/database_user_password/aze\!123/" /root/BookStack/.env
+	sed -i "s/database_database/bookstack/" /var/www/bookstack/.env
+	sed -i "s/database_username/nimda/" /var/www/bookstack/.env
+	sed -i "s/database_user_password/aze\!123/" /var/www/bookstack/.env
 
-	#generer la cle d'application
-	cd /root/BookStack
+	#changer l'URL
+	sed -i "s;https://example.com;http://lyronn-bookstack.com;" /var/www/bookstack/.env	
+
+	#generer la cle d'application 
 	yes | php artisan key:generate
+
+	#changer les droits d'acces pour /var/www/bookstack
+	chown -R www-data:www-data /var/www/bookstack
+	chmod -R 755 /var/www/bookstack
 
 	#gestion d'erreur
 	if echo $?==0; then
@@ -177,12 +187,29 @@ function install_bookstack()
 	fi
 
 	#configurer le fichier root de nginx dans /etc/nginx/sites-enabled/default
-	sed -i "s;/var/www/example.com;/root/BookStack/public/;" /etc/nginx/sites-enabled/default
+	echo '
+server {
+	listen 80;
+  	listen [::]:80;
+
+	server_name lyronn-bookstack.com;
+
+  	root /var/www/bookstack/public;
+	index index.php index.html;
+
+	location / {
+	    try_files $uri $uri/ /index.php?$query_string;
+	}
+   
+	location ~ \.php$ {
+	include snippets/fastcgi-php.conf;
+       	 fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+       	}
+}' >> /etc/nginx/sites-enabled/bookstack-config	
 
 	#mise a jour de la base de donnee
 	yes | php artisan migrate
 	
-
 }
 
 clear
@@ -190,17 +217,41 @@ clear
 echo "Mises à jour et installation de nginx"
 nginx_install
 
+sleep 15
+
 echo "Installation de mariadb et my_sql_secure_installation"
 mariadb_install
+
+sleep 15
 
 echo "Installation de php"
 php_install
 
+sleep 15
+
 echo "Redémarrer nginx"
 systemctl restart nginx.service
+
+sleep 5
 
 echo "Ajout de l'utilisateur nimda"
 configure_mariadb
 
+sleep 15
+
 echo "Installation de composer"
 configure_composer
+
+sleep 15
+
+echo "Installation de BookStack"
+install_bookstack
+
+sleep 10
+
+echo "Redémarrage de nginx"
+systemctl restart nginx
+
+#echo "Création du groupe bookstack"
+#bookstack_rights
+
