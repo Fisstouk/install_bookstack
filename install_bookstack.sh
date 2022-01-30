@@ -2,6 +2,7 @@
 #
 #version:1.0
 #
+#auteur:lyronn
 
 #affiche les commandes realisees
 set -x
@@ -209,6 +210,30 @@ server {
 	#mise a jour de la base de donnee
 	yes | php artisan migrate
 	
+}
+
+function db_bookstack()
+{
+	#creation du compte nimda
+	mysql -e '
+	USE bookstack; 
+	INSERT INTO users (id, name, email, password, created_at, updated_at, external_auth_id, slug) 
+	VALUES ("3", "nimda", "nimda@admin.com", "azerty", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, "NULL", "nimda");'
+
+	#attribution du role a admin a nimda
+	mysql -e 'USE bookstack; 
+	INSERT INTO role_user (user_id, role_id) 
+	VALUES ('3', '1');'
+
+	#creation etagere
+	mysql -e 'USE bookstack; 
+	INSERT INTO bookshelves (name, slug, description, created_by, updated_by, created_at, updated_at, owned_by) 
+	VALUES ("1.Administration Linux", "1.Administration Linux", "Cours Linux", 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1);'
+
+	#mise a jour de bookstack
+	cd /var/www/bookstack
+	php artisan bookstack:regenerate-search
+	php artisan bookstack:regenerate-permissions
 }
 
 clear
