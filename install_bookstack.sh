@@ -279,3 +279,5 @@ systemctl restart nginx
 #echo "Création du groupe bookstack"
 #bookstack_rights
 
+echo "Création du compte nimda, d'une étagère et d'un livre"
+db_bookstack
