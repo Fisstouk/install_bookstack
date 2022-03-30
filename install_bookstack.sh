@@ -29,16 +29,6 @@ function mariadb_install()
 	apt install mariadb-server -y
 	systemctl start mysql.service
 	systemctl enable mysql.service
-
-	#installation de mysql_secure_installation
-	#mot de passe pour root
-	#mysql -e "UPDATE mysql.user SET Password = PASSWORD('CHANGEME') WHERE User = 'root'"
-	#supprimer les utilisateurs anonymes
-	#mysql -e "DROP USER ''@'localhost'"
-	#supprime la bdd de demo
-	#mysql -e "DROP DATABASE test"
-	#reinitialiser les privileges
-	#mysql -e "FLUSH PRIVILEGES"
 }
 
 function php_install()
@@ -65,31 +55,6 @@ function php_install()
 	#SimpleXML et DOM
 	apt install php-xml -y
 
-}
-
-function configure_mariadb()
-{
-	#connection en root a la bdd
-	#mettre un espace apres -p demandera t'interargir avec mysql
-	#mysql -u "root" "-paze!123"
-
-	#cree la bdd nomme bookstack
-	mysql -e "CREATE DATABASE bookstack;"
-
-	#creation de l'utilisateur nimda avec son mdp en tant qu'admin
-	mysql -e "CREATE USER 'nimda'@'localhost' IDENTIFIED BY 'aze\!123';"
-
-	#creation de l'utilisateur lyronn en tant que viewer
-	mysql -e "CREATE USER 'lyronn'@'localhost' IDENTIFIED BY 'aze\!123';"
-
-	#creation de l'utilisateur guest en tant qu'invite
-	mysql -e "CREATE USER 'guest'@'localhost' IDENTIFIED BY 'aze\!123';"
-
-	#donne les droits admin a nimda
-	mysql -e 'GRANT ALL ON bookstack.* TO "nimda"@"localhost" IDENTIFIED BY "aze\!123" WITH GRANT OPTION;'
-
-	#enregistre et quitte la bdd
-	mysql -e "FLUSH PRIVILEGES;"
 }
 
 function configure_composer()
@@ -212,29 +177,6 @@ server {
 	
 }
 
-function db_bookstack()
-{
-	#creation du compte nimda
-	mysql -e '
-	USE bookstack; 
-	INSERT INTO users (id, name, email, password, created_at, updated_at, external_auth_id, slug) 
-	VALUES ("3", "nimda", "nimda@admin.com", "azerty", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, "NULL", "nimda");'
-
-	#attribution du role a admin a nimda
-	mysql -e 'USE bookstack; 
-	INSERT INTO role_user (user_id, role_id) 
-	VALUES ('3', '1');'
-
-	#creation etagere
-	mysql -e 'USE bookstack; 
-	INSERT INTO bookshelves (name, slug, description, created_by, updated_by, created_at, updated_at, owned_by) 
-	VALUES ("1.Administration Linux", "1.Administration Linux", "Cours Linux", 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1);'
-
-	#mise a jour de bookstack
-	cd /var/www/bookstack
-	php artisan bookstack:regenerate-search
-	php artisan bookstack:regenerate-permissions
-}
 
 clear
 
@@ -256,11 +198,6 @@ sleep 15
 echo "Redémarrer nginx"
 systemctl restart nginx.service
 
-sleep 5
-
-echo "Ajout de l'utilisateur nimda"
-configure_mariadb
-
 sleep 15
 
 echo "Installation de composer"
@@ -276,8 +213,3 @@ sleep 10
 echo "Redémarrage de nginx"
 systemctl restart nginx
 
-#echo "Création du groupe bookstack"
-#bookstack_rights
-
-echo "Création du compte nimda, d'une étagère et d'un livre"
-db_bookstack
