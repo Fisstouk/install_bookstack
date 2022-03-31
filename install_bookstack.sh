@@ -13,7 +13,8 @@ set -e
 function nginx_install()
 {
 	#modifie temporairement le umask
-	umask 002
+	# après l'installation de cheat
+	# umask 002
 	#mise a jour et installation de nginx et git
 	apt update -y
 	apt install nginx -y
@@ -29,6 +30,14 @@ function mariadb_install()
 	apt install mariadb-server -y
 	systemctl start mysql.service
 	systemctl enable mysql.service
+}
+
+function configure_mariadb()
+{
+	mysql -e "CREATE DATABASE bookstack;"
+	mysql -e 'GRANT ALL ON bookstack.* TO "bookstackuser"@"localhost" IDENTIFIED BY "password";'
+	mysql -e "FLUSH PRIVILEGES;"
+
 }
 
 function php_install()
@@ -79,37 +88,20 @@ function configure_composer()
 	apt install php7.4-curl -y
 
 	#cree le fichier composer.json pour demarrer un projet
-	echo '
-	{
-	    "require": {
-	            "monolog/monolog": "2.0.*"
-	    }
-	}' >> /root/composer.json
+	# Les quotes permettent de protéger le EOF et d'insérer l'étoile
+	cat > /root/composer.json << "EOF"
+{
+    "require": {
+	    "monolog/monolog": "2.0.*"
+    }
+} 
+
+EOF
 
 	#mise a jour de composer avec -n comme argument qui ne demande pas d'interaction
 	composer update -n
 }
 
-function bookstack_rights()
-{
-	groupadd bookstack
-	
-	chgrp -Rv bookstack /root/BookStack/storage
-
-	chgrp -Rv bookstack /root/BookStack/bootstrap/cache
-
-	chgrp -Rv bookstack /root/BookStack/public/uploads
-
-	usermod -aG bookstack www-data
-	usermod -aG bookstack root
-
-	chmod 770 /root/BookStack/storage
-
-	chmod 770 /root/BookStack/bootstrap/cache
-
-	chmod 770 /root/BookStack/public/uploads
-
-}
 
 function install_bookstack()
 {
@@ -130,11 +122,11 @@ function install_bookstack()
 
 	#remplacement de la configuration de la bdd
 	sed -i "s/database_database/bookstack/" /var/www/bookstack/.env
-	sed -i "s/database_username/nimda/" /var/www/bookstack/.env
-	sed -i "s/database_user_password/aze\!123/" /var/www/bookstack/.env
+	sed -i "s/database_username/bookstackuser/" /var/www/bookstack/.env
+	sed -i "s/database_user_password/password/" /var/www/bookstack/.env
 
 	#changer l'URL
-	sed -i "s;https://example.com;http://lyronn-bookstack.com;" /var/www/bookstack/.env	
+	sed -i "s;https://example.com;http://wiki.lyronn.local;" /var/www/bookstack/.env	
 
 	#generer la cle d'application 
 	yes | php artisan key:generate
@@ -152,12 +144,12 @@ function install_bookstack()
 	fi
 
 	#configurer le fichier root de nginx dans /etc/nginx/sites-enabled/default
-	echo '
+	cat > /etc/nginx/sites-available/bookstack.conf << "EOF"
 server {
 	listen 80;
   	listen [::]:80;
 
-	server_name lyronn-bookstack.com;
+	server_name wiki.lyronn.local;
 
   	root /var/www/bookstack/public;
 	index index.php index.html;
@@ -170,13 +162,21 @@ server {
 	include snippets/fastcgi-php.conf;
        	 fastcgi_pass unix:/run/php/php7.4-fpm.sock;
        	}
-}' >> /etc/nginx/sites-enabled/bookstack-config	
+
+EOF
 
 	#mise a jour de la base de donnee
 	yes | php artisan migrate
 	
 }
 
+function bookstack_rights()
+{
+	chown -Rv www-data:www-data /root/BookStack/storage
+	chown -Rv www-data:www-data /root/BookStack/bootstrap/cache
+	chown -Rv www-data:www-data /root/BookStack/public/uploads
+
+}
 
 clear
 
@@ -207,6 +207,11 @@ sleep 15
 
 echo "Installation de BookStack"
 install_bookstack
+
+sleep 10
+
+echo "Modification des droits des fichiers de configuration bookstack"
+bookstack_rights
 
 sleep 10
 
