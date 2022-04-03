@@ -1,27 +1,28 @@
 #!/bin/bash
-#
-#version:1.0
-#
-#auteur:lyronn
 
-#affiche les commandes realisees
+# Nom		: Installation de BookStack 
+# Description	: Script pour une installation en locale
+# Version	: 1.0
+# Auteur	: lyronn
+
+# Affiche les commandes realisees
 set -x
 
-#arrete le script des qu'une erreur survient
+# Arrete le script des qu'une erreur survient
 set -e
 
 function nginx_install()
 {
-	# modifie temporairement le umask
-	# après l'installation de cheat
+	# Modifie temporairement le umask
+	# Après l'installation de cheat
 	# umask 0022
 
-	#mise a jour et installation de nginx et git
+	# Mise a jour et installation de nginx et git
 	apt update -y
 	apt install nginx -y
 	apt install git -y
 
-	#demarrer le service nginx et l'activer a chaque demarrage
+	# Demarrer le service nginx et l'activer a chaque demarrage
 	systemctl start nginx.service
 	systemctl enable nginx.service
 }
@@ -53,50 +54,50 @@ function php_install()
 {
 	apt install php-fpm -y
 
-	#demarrer php
+	# Demarrer php
 	systemctl start php7.4-fpm.service
 	systemctl enable php7.4-fpm.service
 
-	#installation des extensions php suivantes
-	#MBstring
+	# Installation des extensions php suivantes
+	# MBstring
 	apt install php7.4-mbstring -y
 
-	#Tokenizer
+	# Tokenizer
 	apt install php-tokenizer -y
 
-	#GD
+	# GD
 	apt install php-gd -y
 
-	#MySQL
+	# MySQL
 	apt install php-mysql -y
 
-	#SimpleXML remplacé par php-xml et DOM
+	# SimpleXML remplacé par php-xml et DOM
 	apt install php-xml -y
 
 }
 
 function configure_composer()
 {	
-	#installatin de unzip
+	# Installatin de unzip
 	apt install unzip -y
 
-	#installation de composer
+	# Installation de composer
 	php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
 
-	#verification du hash
+	# Verification du hash
 	php -r "if (hash_file('sha384', 'composer-setup.php') === '906a84df04cea2aa72f40b5f787e49f22d4c2f19492ac310e8cba5b96ac8b64115ac402c8cd292b8a03482574915d1a8') { echo 'Installer verified'; } else { echo 'Installer corrupt'; unlink('composer-setup.php'); } echo PHP_EOL;"
 
 	php composer-setup.php
 
 	php -r "unlink('composer-setup.php');"
 
-	#deplace le fichier composer.phar dans /usr/local/bin/composer pour executer composer
+	# Deplace le fichier composer.phar dans /usr/local/bin/composer pour executer composer
 	mv -v composer.phar /usr/local/bin/composer
 
-	#installe php-curl pour mettre a jour composer
+	# Installe php-curl pour mettre a jour composer
 	apt install php7.4-curl -y
 
-	#cree le fichier composer.json pour demarrer un projet
+	# Cree le fichier composer.json pour demarrer un projet
 	# Les quotes permettent de protéger le EOF et d'insérer l'étoile
 	cat > /root/composer.json << "EOF"
 {
@@ -107,7 +108,7 @@ function configure_composer()
 
 EOF
 
-	#mise a jour de composer avec -n comme argument qui ne demande pas d'interaction
+	# Mise a jour de composer avec -n comme argument qui ne demande pas d'interaction
 	composer update -n
 }
 
@@ -116,7 +117,7 @@ function install_bookstack()
 {
 	cd /var/www/
 
-	#telechargement de bookstack
+	# Telechargement de bookstack
 	git clone https://github.com/BookStackApp/BookStack.git --branch release --single-branch
 
 	mv /var/www/BookStack /var/www/bookstack
@@ -125,22 +126,22 @@ function install_bookstack()
 
 	composer install --no-dev -n	
 
-	#.env fichier de config pour BookStack
-	#copier le fichier .env.example entrer l'email et le nom de la bdd dans le fichier .env
+	# .env fichier de config pour BookStack
+	# Copier le fichier .env.example entrer l'email et le nom de la bdd dans le fichier .env
 	cp /var/www/bookstack/.env.example /var/www/bookstack/.env
 
-	#remplacement de la configuration de la bdd
+	# Remplacement de la configuration de la bdd
 	sed -i "s/database_database/bookstack/" /var/www/bookstack/.env
 	sed -i "s/database_username/bookstackuser/" /var/www/bookstack/.env
 	sed -i "s/database_user_password/password/" /var/www/bookstack/.env
 
-	#changer l'URL
+	# Changer l'URL
 	sed -i "s;https://example.com;http://wiki.lyronn.local;" /var/www/bookstack/.env	
 
-	#generer la cle d'application 
+	# Generer la cle d'application 
 	yes | php artisan key:generate
 
-	#gestion d'erreur
+	# Gestion d'erreur
 	if echo $?==0; then
 		echo "Cle d'application générée"
 	else
@@ -148,12 +149,17 @@ function install_bookstack()
 		exit
 	fi
 
-	#changer les droits d'acces pour /var/www/bookstack/storage /var/www/bootsrap/cache et /var/www/public/uploads
+	# Changer les droits pour /var/www/bookstack
+	# Apporte une sécurité supplémentaire en cas d'attaque
+	# Il faut éviter que tous les fichiers appartiennent à root
+	chown -Rv lyronn:lyronn /var/www/bookstack
+
+	# Changer les droits d'acces pour /var/www/bookstack/storage /var/www/bootsrap/cache et /var/www/public/uploads
 	chown -Rv www-data:www-data /var/www/bookstack/storage
 	chown -Rv www-data:www-data /var/www/bookstack/bootstrap/cache
 	chown -Rv www-data:www-data /var/www/bookstack/public/uploads
 
-	#configurer le fichier root de nginx dans /etc/nginx/sites-available
+	# Configurer le fichier root de nginx dans /etc/nginx/sites-available
 	cat > /etc/nginx/sites-available/bookstack.conf << "EOF"
 server {
 	listen 80;
@@ -179,16 +185,29 @@ EOF
 	# Lien symbolique entre les sites-available et les sites-enabled
 	ln -s /etc/nginx/sites-available/bookstack.conf /etc/nginx/sites-enabled/
 
-	#mise a jour de la base de donnee
+	# Mise a jour de la base de donnee
+	# Cette instruction doit être commentée dans le cadre d'une restauration de la bdd
 	yes | php artisan migrate
 	
+}
+
+function restore_db()
+{
+	# Restauration de la bdd
+	mysql -u root bookstack < ~/bookstack.backup.sql
+
+	# Restauration des fichiers
+	tar -xvzf ~/bookstack-files-backup.tar.gz
 }
 
 clear
 
 # Utile lorsqu'on utilise des snapshots qui ne sont pas l'heure
 echo "Synchronisation de l'heure"
-hwclock --hctosys
+# ntpdate pool.ntp.org
+timedatectl set-ntp on
+systemctl restart systemd-timesyncd
+systemctl status systemd-timesyncd --no-pager
 
 echo "Mises à jour et installation de nginx"
 nginx_install
@@ -228,3 +247,6 @@ systemctl restart nginx.service
 
 echo "Redémarrage de php7.4-fpm"
 systemctl restart php7.4-fpm
+
+# echo "Restauration de la bdd"
+# restore_db
