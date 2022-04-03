@@ -12,9 +12,10 @@ set -e
 
 function nginx_install()
 {
-	#modifie temporairement le umask
+	# modifie temporairement le umask
 	# après l'installation de cheat
-	# umask 002
+	# umask 0022
+
 	#mise a jour et installation de nginx et git
 	apt update -y
 	apt install nginx -y
@@ -34,8 +35,16 @@ function mariadb_install()
 
 function configure_mariadb()
 {
+	# Creation de la bdd
 	mysql -e "CREATE DATABASE bookstack;"
-	mysql -e 'GRANT ALL ON bookstack.* TO "bookstackuser"@"localhost" IDENTIFIED BY "password";'
+
+	# Creation de l'utilisateur bookstackuser
+	mysql -e 'CREATE USER "bookstackuser"@"localhost" IDENTIFIED BY "password";'
+
+	# Attribution des droits admin a bookstackuser
+	mysql -e 'GRANT ALL PRIVILEGES ON bookstack.* TO "bookstackuser"@"localhost" IDENTIFIED BY "password" WITH GRANT OPTION;'
+
+	# Mets à jour les modifications
 	mysql -e "FLUSH PRIVILEGES;"
 
 }
@@ -61,7 +70,7 @@ function php_install()
 	#MySQL
 	apt install php-mysql -y
 
-	#SimpleXML et DOM
+	#SimpleXML remplacé par php-xml et DOM
 	apt install php-xml -y
 
 }
@@ -131,10 +140,6 @@ function install_bookstack()
 	#generer la cle d'application 
 	yes | php artisan key:generate
 
-	#changer les droits d'acces pour /var/www/bookstack
-	chown -R www-data:www-data /var/www/bookstack
-	chmod -R 755 /var/www/bookstack
-
 	#gestion d'erreur
 	if echo $?==0; then
 		echo "Cle d'application générée"
@@ -143,7 +148,12 @@ function install_bookstack()
 		exit
 	fi
 
-	#configurer le fichier root de nginx dans /etc/nginx/sites-enabled/default
+	#changer les droits d'acces pour /var/www/bookstack/storage /var/www/bootsrap/cache et /var/www/public/uploads
+	chown -Rv www-data:www-data /var/www/bookstack/storage
+	chown -Rv www-data:www-data /var/www/bookstack/bootstrap/cache
+	chown -Rv www-data:www-data /var/www/bookstack/public/uploads
+
+	#configurer le fichier root de nginx dans /etc/nginx/sites-available
 	cat > /etc/nginx/sites-available/bookstack.conf << "EOF"
 server {
 	listen 80;
@@ -162,59 +172,59 @@ server {
 	include snippets/fastcgi-php.conf;
        	 fastcgi_pass unix:/run/php/php7.4-fpm.sock;
        	}
+}
 
 EOF
+
+	# Lien symbolique entre les sites-available et les sites-enabled
+	ln -s /etc/nginx/sites-available/bookstack.conf /etc/nginx/sites-enabled/
 
 	#mise a jour de la base de donnee
 	yes | php artisan migrate
 	
 }
 
-function bookstack_rights()
-{
-	chown -Rv www-data:www-data /root/BookStack/storage
-	chown -Rv www-data:www-data /root/BookStack/bootstrap/cache
-	chown -Rv www-data:www-data /root/BookStack/public/uploads
-
-}
-
 clear
+
+# Utile lorsqu'on utilise des snapshots qui ne sont pas l'heure
+echo "Synchronisation de l'heure"
+hwclock --hctosys
 
 echo "Mises à jour et installation de nginx"
 nginx_install
 
-sleep 15
+sleep 10
 
 echo "Installation de mariadb et my_sql_secure_installation"
 mariadb_install
 
-sleep 15
+sleep 10
+
+echo "Configuration de MariaDB"
+configure_mariadb
 
 echo "Installation de php"
 php_install
 
-sleep 15
+sleep 10
 
 echo "Redémarrer nginx"
 systemctl restart nginx.service
 
-sleep 15
+sleep 10
 
 echo "Installation de composer"
 configure_composer
 
-sleep 15
+sleep 10
 
 echo "Installation de BookStack"
 install_bookstack
 
 sleep 10
 
-echo "Modification des droits des fichiers de configuration bookstack"
-bookstack_rights
-
-sleep 10
-
 echo "Redémarrage de nginx"
-systemctl restart nginx
+systemctl restart nginx.service
 
+echo "Redémarrage de php7.4-fpm"
+systemctl restart php7.4-fpm
