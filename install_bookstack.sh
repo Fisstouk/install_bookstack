@@ -196,8 +196,12 @@ function restore_db()
 	# Restauration de la bdd
 	mysql -u root bookstack < ~/bookstack.backup.sql
 
-	# Restauration des fichiers
-	tar -xvzf ~/bookstack-files-backup.tar.gz
+	# Restauration des fichiers dans le dossier 
+	tar xvzf ~/bookstack-files-backup.tar.gz -C /var/www/bookstack/
+
+	# Synchronisation de la bdd et des fichiers
+	cd /var/www/bookstack/
+	yes | php artisan migrate
 }
 
 clear
